@@ -9,7 +9,7 @@ load_dotenv()
 
 from sqlalchemy import text
 from recipes.core.database import engine, Base
-from recipes.api.routes import recipes, pantry, planner
+from recipes.api.routes import recipes, pantry, planner, admin
 
 
 @asynccontextmanager
@@ -37,6 +37,7 @@ app = FastAPI(
 app.include_router(recipes.router)
 app.include_router(pantry.router)
 app.include_router(planner.router)
+app.include_router(admin.router)
 
 
 @app.get("/")

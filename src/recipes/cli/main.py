@@ -197,5 +197,22 @@ def _display_plan(data: dict):
         click.echo(f"  {day:10s} {recipe_name}")
 
 
+@cli.command("reset")
+@click.option("--all", "reset_all", is_flag=True, required=True, help="Required flag to confirm full database reset.")
+def reset(reset_all: bool):
+    """Drop all tables and re-ingest every recipe from its original URL."""
+    click.echo("Collecting URLs, wiping database, and re-ingesting all recipes ...")
+    with httpx.Client(timeout=300) as client:
+        response = client.post(f"{BASE_URL}/admin/reset")
+    data = _handle_response(response)
+    if data:
+        click.echo(f"\nDone. {data['succeeded']}/{data['urls_found']} recipes re-ingested successfully.")
+        for r in data["results"]:
+            if r["status"] == "ok":
+                click.echo(f"  [ok]    {r['name']}  ({r['url']})")
+            else:
+                click.echo(f"  [fail]  {r['url']}\n          {r['error']}")
+
+
 if __name__ == "__main__":
     cli()
