@@ -88,17 +88,26 @@ def pantry():
 
 @pantry.command("add")
 @click.argument("name")
-@click.argument("qty")
-@click.argument("unit")
-def pantry_add(name: str, qty: str, unit: str):
-    """Add an item to the pantry."""
+@click.argument("qty", required=False, default=None)
+@click.argument("unit", required=False, default=None)
+@click.option("--unlimited", is_flag=True, default=False, help="Mark as always available (never appears on shopping list).")
+def pantry_add(name: str, qty: str, unit: str, unlimited: bool):
+    """Add an item to the pantry.
+
+    Use --unlimited for staples you always have (water, salt, etc.).
+    QTY and UNIT are optional for unlimited items.
+    """
     with httpx.Client(timeout=30) as client:
         response = client.post(
-            f"{BASE_URL}/pantry", json={"name": name, "quantity": qty, "unit": unit}
+            f"{BASE_URL}/pantry",
+            json={"name": name, "quantity": qty, "unit": unit, "unlimited": unlimited},
         )
     data = _handle_response(response)
     if data:
-        click.echo(f"Added pantry item [{data['id']}]: {data['quantity']} {data['unit']} of {data['name']}")
+        if data.get("unlimited"):
+            click.echo(f"Added pantry item [{data['id']}]: {data['name']} (unlimited)")
+        else:
+            click.echo(f"Added pantry item [{data['id']}]: {data['quantity']} {data['unit']} of {data['name']}")
 
 
 @pantry.command("list")
@@ -112,8 +121,11 @@ def pantry_list():
             click.echo("Pantry is empty.")
             return
         for item in data:
-            qty = f"{item['quantity']} {item['unit']}" if item.get("quantity") else "—"
-            click.echo(f"[{item['id']}] {item['name']}  ({qty})")
+            if item.get("unlimited"):
+                click.echo(f"[{item['id']}] {item['name']}  (∞ unlimited)")
+            else:
+                qty = f"{item['quantity']} {item['unit']}" if item.get("quantity") else "—"
+                click.echo(f"[{item['id']}] {item['name']}  ({qty})")
 
 
 @pantry.command("remove")

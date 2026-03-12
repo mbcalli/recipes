@@ -19,6 +19,7 @@ class PantryItemOut(BaseModel):
     name: str
     quantity: Optional[str] = None
     unit: Optional[str] = None
+    unlimited: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -27,11 +28,13 @@ class CreatePantryItemRequest(BaseModel):
     name: str
     quantity: Optional[str] = None
     unit: Optional[str] = None
+    unlimited: bool = False
 
 
 class PatchPantryItemRequest(BaseModel):
     quantity: Optional[str] = None
     unit: Optional[str] = None
+    unlimited: Optional[bool] = None
 
 
 # ---- Endpoints ----
@@ -49,6 +52,7 @@ def add_pantry_item(body: CreatePantryItemRequest, db: Session = Depends(get_db)
         name=body.name,
         quantity=body.quantity,
         unit=body.unit,
+        unlimited=body.unlimited,
     )
     db.add(item)
     db.commit()
@@ -69,6 +73,8 @@ def update_pantry_item(
         item.quantity = body.quantity
     if body.unit is not None:
         item.unit = body.unit
+    if body.unlimited is not None:
+        item.unlimited = body.unlimited
 
     db.commit()
     db.refresh(item)

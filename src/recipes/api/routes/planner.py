@@ -94,10 +94,11 @@ def _write_plan_markdown(meal_plan: MealPlan, recipe_lookup: dict, pantry_items:
 
     # Aggregate ingredients with unit conversion
     pantry_names = {item.name.lower() for item in pantry_items}
-    items = aggregate_ingredients(planned_recipe_ids, recipe_lookup)
+    unlimited_names = {item.name.lower() for item in pantry_items if item.unlimited}
+    ing_items = aggregate_ingredients(planned_recipe_ids, recipe_lookup)
 
-    buy = [i for i in items if i["name"].lower() not in pantry_names]
-    have = [i for i in items if i["name"].lower() in pantry_names]
+    buy = [i for i in ing_items if i["name"].lower() not in pantry_names]
+    have = [i for i in ing_items if i["name"].lower() in pantry_names]
 
     lines: list[str] = [f"# Meal Plan – Week of {week_of}\n"]
 
@@ -116,7 +117,10 @@ def _write_plan_markdown(meal_plan: MealPlan, recipe_lookup: dict, pantry_items:
     lines.append("\n### Already in Pantry\n")
     if have:
         for i in have:
-            if i["aggregated"]:
+            name_lower = i["name"].lower()
+            if name_lower in unlimited_names:
+                lines.append(f"- [x] {i['name']} — ∞ (unlimited)")
+            elif i["aggregated"]:
                 lines.append(f"- [x] {i['name']} — {i['total']} ({i['detail']})")
             else:
                 lines.append(f"- [x] {i['name']} — {i['total']}")

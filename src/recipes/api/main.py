@@ -7,14 +7,23 @@ from fastapi import FastAPI
 
 load_dotenv()
 
+from sqlalchemy import text
 from recipes.core.database import engine, Base
 from recipes.api.routes import recipes, pantry, planner
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize database tables on startup
     Base.metadata.create_all(bind=engine)
+    # Add columns introduced after initial schema (safe to run on every start)
+    with engine.connect() as conn:
+        try:
+            conn.execute(text(
+                "ALTER TABLE pantry_items ADD COLUMN unlimited BOOLEAN NOT NULL DEFAULT 0"
+            ))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
     yield
 
 

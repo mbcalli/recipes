@@ -4,7 +4,7 @@ from datetime import datetime, date
 from typing import Optional, List
 
 from sqlalchemy import (
-    Integer, String, Text, Float, ForeignKey, DateTime, Date, func
+    Boolean, Integer, String, Text, Float, ForeignKey, DateTime, Date, func
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -56,6 +56,7 @@ class PantryItem(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     quantity: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     unit: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    unlimited: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=func.now(), onupdate=func.now(), nullable=False
     )
