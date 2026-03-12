@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import date
-from fractions import Fraction
 from pathlib import Path
 from typing import Optional
 
@@ -13,6 +11,7 @@ from sqlalchemy.orm import Session
 from recipes.core.database import get_db
 from recipes.core.models import Recipe, PantryItem, MealPlan, MealPlanEntry
 from recipes.core import planner as planner_core
+from recipes.core.units import aggregate_ingredients
 
 router = APIRouter(prefix="/planner", tags=["planner"])
 
@@ -78,59 +77,6 @@ def _meal_plan_to_out(meal_plan: MealPlan) -> MealPlanOut:
     return MealPlanOut(id=meal_plan.id, week_of=meal_plan.week_of, entries=entries_out)
 
 
-def _parse_qty(qty_str: str) -> Fraction | None:
-    """Parse a quantity string like '1', '1/2', or '1 1/2' into a Fraction."""
-    if not qty_str:
-        return None
-    qty_str = qty_str.strip()
-    try:
-        parts = qty_str.split()
-        if len(parts) == 2:
-            return Fraction(int(parts[0])) + Fraction(parts[1])
-        return Fraction(qty_str)
-    except (ValueError, ZeroDivisionError):
-        return None
-
-
-def _fmt_qty(f: Fraction) -> str:
-    """Format a Fraction as a human-readable quantity string."""
-    if f.denominator == 1:
-        return str(f.numerator)
-    whole = f.numerator // f.denominator
-    remainder = f - whole
-    if whole > 0:
-        return f"{whole} {remainder.numerator}/{remainder.denominator}"
-    return f"{f.numerator}/{f.denominator}"
-
-
-def _build_shopping_list(planned_recipe_ids: set, recipe_lookup: dict) -> dict:
-    """Aggregate ingredients across recipes by (name, unit), summing quantities.
-
-    Returns dict keyed by (name_lower, unit_lower) with value:
-      {"total": Fraction|None, "unit": str, "usages": [(qty_str, recipe_name)]}
-    """
-    # key: (name_lower, unit_lower_or_empty)
-    groups: dict[tuple, dict] = {}
-    for recipe_id in planned_recipe_ids:
-        recipe = recipe_lookup.get(recipe_id)
-        if not recipe:
-            continue
-        for ing in recipe.ingredients:
-            name_key = ing.name.lower().strip()
-            unit_key = (ing.unit or "").lower().strip()
-            key = (name_key, unit_key)
-            if key not in groups:
-                groups[key] = {"name": ing.name.strip(), "unit": ing.unit or "", "total": Fraction(0), "parseable": True, "usages": []}
-            qty_frac = _parse_qty(ing.quantity or "")
-            qty_display = f"{ing.quantity} {ing.unit}".strip() if ing.quantity else (ing.unit or "")
-            groups[key]["usages"].append((qty_display, recipe.name))
-            if qty_frac is not None:
-                groups[key]["total"] += qty_frac
-            else:
-                groups[key]["parseable"] = False
-    return groups
-
-
 def _write_plan_markdown(meal_plan: MealPlan, recipe_lookup: dict, pantry_items: list) -> None:
     """Write a markdown meal plan file to the plans/ directory."""
     week_of = meal_plan.week_of
@@ -146,31 +92,12 @@ def _write_plan_markdown(meal_plan: MealPlan, recipe_lookup: dict, pantry_items:
         else:
             entries_by_day[entry.day_of_week][entry.meal_type] = "—"
 
-    # Build shopping list data
+    # Aggregate ingredients with unit conversion
     pantry_names = {item.name.lower() for item in pantry_items}
-    groups = _build_shopping_list(planned_recipe_ids, recipe_lookup)
+    items = aggregate_ingredients(planned_recipe_ids, recipe_lookup)
 
-    buy = []
-    have = []
-    for (name_key, _unit_key), g in sorted(groups.items()):
-        # Build the "total + breakdown" string
-        if g["parseable"] and g["total"] > 0:
-            total_str = f"{_fmt_qty(g['total'])} {g['unit']}".strip()
-            breakdown = ", ".join(
-                f"{qty} {rname}" if qty else rname for qty, rname in g["usages"]
-            )
-            summary = f"{total_str} ({breakdown})"
-        else:
-            # Can't sum — fall back to listing each usage
-            summary = ", ".join(
-                f"{qty} {rname}" if qty else rname for qty, rname in g["usages"]
-            )
-
-        entry = (g["name"].title(), summary)
-        if name_key in pantry_names:
-            have.append(entry)
-        else:
-            buy.append(entry)
+    buy = [i for i in items if i["name"].lower() not in pantry_names]
+    have = [i for i in items if i["name"].lower() in pantry_names]
 
     lines: list[str] = [f"# Meal Plan – Week of {week_of}\n"]
 
@@ -178,15 +105,21 @@ def _write_plan_markdown(meal_plan: MealPlan, recipe_lookup: dict, pantry_items:
     lines.append("## Shopping List\n")
     lines.append("### Need to Buy\n")
     if buy:
-        for name, summary in buy:
-            lines.append(f"- [ ] **{name}** — {summary}")
+        for i in buy:
+            if i["aggregated"]:
+                lines.append(f"- [ ] **{i['name']}** — {i['total']} ({i['detail']})")
+            else:
+                lines.append(f"- [ ] **{i['name']}** — {i['total']}")
     else:
-        lines.append("- [ ] *(nothing — everything is in the pantry!)*")
+        lines.append("- *(nothing — everything is in the pantry!)*")
 
     lines.append("\n### Already in Pantry\n")
     if have:
-        for name, summary in have:
-            lines.append(f"- [x] {name} — {summary}")
+        for i in have:
+            if i["aggregated"]:
+                lines.append(f"- [x] {i['name']} — {i['total']} ({i['detail']})")
+            else:
+                lines.append(f"- [x] {i['name']} — {i['total']}")
     else:
         lines.append("- *(no overlap with pantry)*")
 
@@ -212,10 +145,10 @@ def _write_plan_markdown(meal_plan: MealPlan, recipe_lookup: dict, pantry_items:
             lines.append(f"Source: {recipe.source_url}\n")
         if recipe.instructions:
             lines.append("**Instructions:**\n")
-            for i, step in enumerate(recipe.instructions.splitlines(), start=1):
+            for idx, step in enumerate(recipe.instructions.splitlines(), start=1):
                 step = step.strip()
                 if step:
-                    lines.append(f"{i}. {step}")
+                    lines.append(f"{idx}. {step}")
             lines.append("")
 
     # Write file
