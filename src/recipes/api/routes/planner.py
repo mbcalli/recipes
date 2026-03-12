@@ -45,6 +45,36 @@ class MealPlanOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ShoppingItem(BaseModel):
+    name: str
+    total: str
+    detail: str
+    aggregated: bool
+    unlimited: bool = False
+
+
+class RecipeDetail(BaseModel):
+    id: int
+    name: str
+    source_url: Optional[str] = None
+    instructions: Optional[str] = None
+    ingredients: list[dict] = []
+
+
+class ScheduleDay(BaseModel):
+    day: str
+    dinner: Optional[str] = None
+    recipe_id: Optional[int] = None
+
+
+class MealPlanDetailOut(BaseModel):
+    week_of: date
+    schedule: list[ScheduleDay]
+    shopping_buy: list[ShoppingItem]
+    shopping_have: list[ShoppingItem]
+    recipes: list[RecipeDetail]
+
+
 def _serialize_recipe(recipe: Recipe) -> dict:
     return {
         "id": recipe.id,
@@ -232,3 +262,75 @@ def get_plan(week_of: date, db: Session = Depends(get_db)):
             detail=f"No meal plan found for week of {week_of}",
         )
     return _meal_plan_to_out(meal_plan)
+
+
+@router.get("/{week_of}/detail", response_model=MealPlanDetailOut)
+def get_plan_detail(week_of: date, db: Session = Depends(get_db)):
+    """Return the full plan: schedule, shopping list, and recipe instructions."""
+    meal_plan = db.query(MealPlan).filter(MealPlan.week_of == week_of).first()
+    if not meal_plan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No meal plan found for week of {week_of}",
+        )
+
+    pantry_items = db.query(PantryItem).all()
+    pantry_names = {item.name.lower() for item in pantry_items}
+    unlimited_names = {item.name.lower() for item in pantry_items if item.unlimited}
+
+    # Build recipe lookup from DB
+    planned_recipe_ids = {e.recipe_id for e in meal_plan.entries if e.recipe_id is not None}
+    recipe_objs = db.query(Recipe).filter(Recipe.id.in_(planned_recipe_ids)).all()
+    recipe_lookup = {r.id: r for r in recipe_objs}
+
+    # Schedule
+    dinner_by_day = {e.day_of_week: e for e in meal_plan.entries if e.meal_type == "dinner"}
+    schedule = []
+    for day in DAYS_OF_WEEK:
+        entry = dinner_by_day.get(day)
+        recipe = recipe_lookup.get(entry.recipe_id) if entry and entry.recipe_id else None
+        schedule.append(ScheduleDay(
+            day=day,
+            dinner=recipe.name if recipe else None,
+            recipe_id=recipe.id if recipe else None,
+        ))
+
+    # Shopping list
+    ing_items = aggregate_ingredients(planned_recipe_ids, recipe_lookup)
+    shopping_buy = []
+    shopping_have = []
+    for i in ing_items:
+        is_unlimited = i["name"].lower() in unlimited_names
+        item = ShoppingItem(
+            name=i["name"],
+            total="∞" if is_unlimited else i["total"],
+            detail="unlimited" if is_unlimited else i["detail"],
+            aggregated=i["aggregated"],
+            unlimited=is_unlimited,
+        )
+        if i["name"].lower() in pantry_names:
+            shopping_have.append(item)
+        else:
+            shopping_buy.append(item)
+
+    # Recipe details
+    recipes_out = []
+    for r in recipe_objs:
+        recipes_out.append(RecipeDetail(
+            id=r.id,
+            name=r.name,
+            source_url=r.source_url,
+            instructions=r.instructions,
+            ingredients=[
+                {"name": ing.name, "quantity": ing.quantity, "unit": ing.unit}
+                for ing in r.ingredients
+            ],
+        ))
+
+    return MealPlanDetailOut(
+        week_of=week_of,
+        schedule=schedule,
+        shopping_buy=shopping_buy,
+        shopping_have=shopping_have,
+        recipes=recipes_out,
+    )
