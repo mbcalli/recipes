@@ -121,6 +121,21 @@
     .plan-table td:first-child { font-weight: 500; width: 110px; }
     .plan-table td { padding: 8px 10px; }
     .empty-state { color: var(--muted); font-size: 13px; font-style: italic; padding: 12px 4px; }
+    .plan-section { margin-top: 28px; }
+    .shop-item { display: flex; align-items: baseline; gap: 8px; padding: 5px 0;
+                 border-bottom: 1px solid var(--bg); font-size: 14px; }
+    .shop-item:last-child { border-bottom: none; }
+    .shop-item input[type=checkbox] { margin-top: 2px; flex-shrink: 0; }
+    .shop-name { font-weight: 600; min-width: 140px; }
+    .shop-total { color: var(--text); }
+    .shop-detail { color: var(--muted); font-size: 12px; }
+    .shop-unlim { color: var(--muted); font-style: italic; font-size: 13px; }
+    .plan-recipe { border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 16px; }
+    .plan-recipe:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .plan-recipe-title { font-weight: 600; font-size: 15px; margin-bottom: 6px; }
+    .plan-recipe-title a { color: var(--accent); text-decoration: none; font-size: 12px;
+                           font-weight: 400; margin-left: 8px; }
+    .plan-recipe-title a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -450,10 +465,9 @@ async function deletePantryItem(id) {
 }
 
 // ── PLAN ───────────────────────────────────────────────────────────────────
-async function loadPlan() {
-  const week = document.getElementById('plan-week').value || currentMonday();
+async function loadPlanDetail(week) {
   try {
-    state.plan = await api('GET', `/planner/${week}`);
+    state.plan = await api('GET', `/planner/${week}/detail`);
     renderPlan();
     setStatus('plan-status', '', '');
   } catch(e) {
@@ -467,6 +481,11 @@ async function loadPlan() {
   }
 }
 
+async function loadPlan() {
+  const week = document.getElementById('plan-week').value || currentMonday();
+  await loadPlanDetail(week);
+}
+
 async function generatePlan() {
   const week      = document.getElementById('plan-week').value || currentMonday();
   const numMeals  = parseInt(document.getElementById('plan-num-meals').value) || null;
@@ -478,9 +497,10 @@ async function generatePlan() {
     const body = { week_of: week };
     if (numMeals) body.num_meals = numMeals;
     if (prefs)    body.preferences = prefs;
-    state.plan = await api('POST', '/planner/generate', body);
-    renderPlan();
-    setStatus('plan-status', `✓ Plan generated for week of ${state.plan.week_of}`, 'ok');
+    await api('POST', '/planner/generate', body);
+    // Fetch detail after generation
+    await loadPlanDetail(week);
+    setStatus('plan-status', `✓ Plan generated for week of ${week}`, 'ok');
   } catch(e) {
     setStatus('plan-status', `Error: ${e.message}`, 'err');
   } finally {
@@ -494,19 +514,86 @@ function renderPlan() {
     el.innerHTML = '<span class="empty-state">No plan for this week yet.</span>';
     return;
   }
-  const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-  const dinners = {};
-  (state.plan.entries || []).forEach(e => {
-    if (e.meal_type === 'dinner') dinners[e.day_of_week] = e.recipe_name || '—';
-  });
+
+  const p = state.plan;
+
+  // Schedule
+  const scheduleRows = p.schedule.map(d =>
+    `<tr><td>${d.day}</td><td>${esc(d.dinner || '—')}</td></tr>`
+  ).join('');
+
+  // Shopping list — need to buy
+  const buyRows = p.shopping_buy.length
+    ? p.shopping_buy.map(i => `
+        <div class="shop-item">
+          <input type="checkbox" />
+          <span class="shop-name">${esc(i.name)}</span>
+          <span class="shop-total">${esc(i.total)}</span>
+          ${i.aggregated ? `<span class="shop-detail">(${esc(i.detail)})</span>` : ''}
+        </div>`).join('')
+    : '<span class="empty-state">Nothing — everything is in the pantry!</span>';
+
+  // Shopping list — already have
+  const haveRows = p.shopping_have.length
+    ? p.shopping_have.map(i => `
+        <div class="shop-item">
+          <input type="checkbox" checked disabled />
+          <span class="shop-name" style="color:var(--muted)">${esc(i.name)}</span>
+          ${i.unlimited
+            ? `<span class="shop-unlim">∞ unlimited</span>`
+            : `<span class="shop-total" style="color:var(--muted)">${esc(i.total)}</span>
+               ${i.aggregated ? `<span class="shop-detail">(${esc(i.detail)})</span>` : ''}`}
+        </div>`).join('')
+    : '<span class="empty-state">No pantry overlap.</span>';
+
+  // Recipes
+  const recipeBlocks = p.recipes.map(r => `
+    <div class="plan-recipe">
+      <div class="plan-recipe-title">
+        ${esc(r.name)}
+        ${r.source_url ? `<a href="${esc(r.source_url)}" target="_blank" rel="noopener">View original ↗</a>` : ''}
+      </div>
+      ${r.ingredients && r.ingredients.length ? `
+        <table style="margin-bottom:10px">
+          <tr><th>Ingredient</th><th>Qty</th><th>Unit</th></tr>
+          ${r.ingredients.map(i => `
+            <tr>
+              <td>${esc(i.name)}</td>
+              <td>${esc(i.quantity || '—')}</td>
+              <td>${esc(i.unit || '—')}</td>
+            </tr>`).join('')}
+        </table>` : ''}
+      ${r.instructions ? `
+        <div class="instructions">
+          <ol>${r.instructions.split('\n').filter(s => s.trim()).map(s => `<li>${esc(s)}</li>`).join('')}</ol>
+        </div>` : ''}
+    </div>`).join('');
+
   el.innerHTML = `
-    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
-      Week of ${state.plan.week_of}
-    </p>
-    <table class="plan-table">
-      <tr><th>Day</th><th>Dinner</th></tr>
-      ${DAYS.map(d => `<tr><td>${d}</td><td>${esc(dinners[d] || '—')}</td></tr>`).join('')}
-    </table>`;
+    <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Week of ${p.week_of}</p>
+
+    <div class="plan-section">
+      <div class="section-title">Schedule</div>
+      <table class="plan-table">
+        <tr><th>Day</th><th>Dinner</th></tr>
+        ${scheduleRows}
+      </table>
+    </div>
+
+    <div class="plan-section">
+      <div class="section-title">Shopping List — Need to Buy</div>
+      ${buyRows}
+    </div>
+
+    <div class="plan-section">
+      <div class="section-title">Shopping List — Already in Pantry</div>
+      ${haveRows}
+    </div>
+
+    <div class="plan-section">
+      <div class="section-title">Recipes</div>
+      ${recipeBlocks || '<span class="empty-state">No recipes assigned.</span>'}
+    </div>`;
 }
 
 // ── Escape helper ──────────────────────────────────────────────────────────
