@@ -186,20 +186,15 @@ def plan_show(week: str):
 
 def _display_plan(data: dict):
     days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    meal_types = ["breakfast", "lunch", "dinner"]
 
-    entries_by_day: dict[str, dict[str, str]] = {day: {} for day in days}
+    dinner_by_day: dict[str, str] = {}
     for entry in data.get("entries", []):
-        day = entry["day_of_week"]
-        meal = entry["meal_type"]
-        recipe_name = entry.get("recipe_name") or "—"
-        entries_by_day.setdefault(day, {})[meal] = recipe_name
+        if entry["meal_type"] == "dinner":
+            dinner_by_day[entry["day_of_week"]] = entry.get("recipe_name") or "—"
 
     for day in days:
-        click.echo(f"\n  {day}:")
-        for meal in meal_types:
-            recipe_name = entries_by_day[day].get(meal, "—")
-            click.echo(f"    {meal.capitalize():10s} {recipe_name}")
+        recipe_name = dinner_by_day.get(day, "—")
+        click.echo(f"  {day:10s} {recipe_name}")
 
 
 if __name__ == "__main__":

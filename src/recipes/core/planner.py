@@ -41,7 +41,7 @@ Current pantry items:
 User preferences: {preferences or "None specified"}
 
 Instructions:
-- Assign recipes to days (Monday through Sunday) for breakfast, lunch, and dinner
+- Assign one recipe per day (dinner only) for Monday through Sunday
 - Favor recipes that use pantry-available ingredients
 - Consider recipe ratings (higher rated = better)
 - Take user notes and preferences into account
@@ -49,13 +49,13 @@ Instructions:
 
 Return ONLY valid JSON with this structure:
 {{
-  "Monday": {{"breakfast": <recipe_id or null>, "lunch": <recipe_id or null>, "dinner": <recipe_id or null>}},
-  "Tuesday": {{"breakfast": <recipe_id or null>, "lunch": <recipe_id or null>, "dinner": <recipe_id or null>}},
-  "Wednesday": {{"breakfast": <recipe_id or null>, "lunch": <recipe_id or null>, "dinner": <recipe_id or null>}},
-  "Thursday": {{"breakfast": <recipe_id or null>, "lunch": <recipe_id or null>, "dinner": <recipe_id or null>}},
-  "Friday": {{"breakfast": <recipe_id or null>, "lunch": <recipe_id or null>, "dinner": <recipe_id or null>}},
-  "Saturday": {{"breakfast": <recipe_id or null>, "lunch": <recipe_id or null>, "dinner": <recipe_id or null>}},
-  "Sunday": {{"breakfast": <recipe_id or null>, "lunch": <recipe_id or null>, "dinner": <recipe_id or null>}}
+  "Monday": {{"dinner": <recipe_id or null>}},
+  "Tuesday": {{"dinner": <recipe_id or null>}},
+  "Wednesday": {{"dinner": <recipe_id or null>}},
+  "Thursday": {{"dinner": <recipe_id or null>}},
+  "Friday": {{"dinner": <recipe_id or null>}},
+  "Saturday": {{"dinner": <recipe_id or null>}},
+  "Sunday": {{"dinner": <recipe_id or null>}}
 }}"""
 
     message = client.messages.create(

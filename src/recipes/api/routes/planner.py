@@ -16,7 +16,7 @@ from recipes.core.units import aggregate_ingredients
 router = APIRouter(prefix="/planner", tags=["planner"])
 
 DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-MEAL_TYPES = ["breakfast", "lunch", "dinner"]
+MEAL_TYPES = ["dinner"]
 
 
 # ---- Pydantic schemas ----
@@ -130,14 +130,11 @@ def _write_plan_markdown(meal_plan: MealPlan, recipe_lookup: dict, pantry_items:
 
     # --- Schedule ---
     lines.append("\n## Schedule\n")
-    lines.append("| Day | Breakfast | Lunch | Dinner |")
-    lines.append("|-----|-----------|-------|--------|")
+    lines.append("| Day | Dinner |")
+    lines.append("|-----|--------|")
     for day in DAYS_OF_WEEK:
-        meals = entries_by_day[day]
-        b = meals.get("breakfast", "—")
-        lu = meals.get("lunch", "—")
-        d = meals.get("dinner", "—")
-        lines.append(f"| {day} | {b} | {lu} | {d} |")
+        d = entries_by_day[day].get("dinner", "—")
+        lines.append(f"| {day} | {d} |")
 
     # --- Recipes & Instructions ---
     lines.append("\n## Recipes\n")
