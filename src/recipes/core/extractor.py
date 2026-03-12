@@ -40,6 +40,11 @@ def extract_recipe(url: str, client: anthropic.Anthropic = None) -> dict:
   "instructions": ["Step 1...", "Step 2..."]
 }}
 
+Rules for ingredients:
+- Each entry must be a single ingredient — never combine two into one (e.g. "salt and pepper" must become two separate entries: "salt" and "pepper")
+- Use null for quantity or unit when not specified
+- Normalise ingredient names to lowercase
+
 Webpage text:
 {text[:8000]}"""
 
