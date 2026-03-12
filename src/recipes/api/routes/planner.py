@@ -24,6 +24,7 @@ MEAL_TYPES = ["breakfast", "lunch", "dinner"]
 class GeneratePlanRequest(BaseModel):
     week_of: date
     preferences: Optional[str] = None
+    num_meals: Optional[int] = None
 
 
 class MealPlanEntryOut(BaseModel):
@@ -179,6 +180,7 @@ def generate_plan(body: GeneratePlanRequest, db: Session = Depends(get_db)):
             pantry=pantry_data,
             week_of=body.week_of,
             preferences=body.preferences or "",
+            num_meals=body.num_meals,
         )
     except Exception as exc:
         raise HTTPException(

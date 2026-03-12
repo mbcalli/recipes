@@ -153,13 +153,16 @@ def _current_monday() -> str:
 @plan.command("generate")
 @click.option("--week", default=None, help="Week start date (YYYY-MM-DD). Defaults to current Monday.")
 @click.option("--prefs", default=None, help="Meal plan preferences or dietary notes.")
-def plan_generate(week: str, prefs: str):
+@click.option("--num-meals", default=None, type=int, help="Total number of meals to plan (rest are leftovers).")
+def plan_generate(week: str, prefs: str, num_meals: int):
     """Generate a meal plan for the given week using Claude."""
     week_of = week or _current_monday()
     click.echo(f"Generating meal plan for week of {week_of} ...")
     payload = {"week_of": week_of}
     if prefs:
         payload["preferences"] = prefs
+    if num_meals is not None:
+        payload["num_meals"] = num_meals
     with httpx.Client(timeout=120) as client:
         response = client.post(f"{BASE_URL}/planner/generate", json=payload)
     data = _handle_response(response)

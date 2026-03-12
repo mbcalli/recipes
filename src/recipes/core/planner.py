@@ -11,6 +11,7 @@ def generate_meal_plan(
     pantry: list[dict],
     week_of: date,
     preferences: str = "",
+    num_meals: int | None = None,
     client: anthropic.Anthropic = None,
 ) -> dict:
     """Call Claude to generate a 7-day meal plan.
@@ -22,6 +23,12 @@ def generate_meal_plan(
 
     recipes_text = json.dumps(recipes, indent=2, default=str)
     pantry_text = json.dumps(pantry, indent=2, default=str)
+
+    meals_instruction = (
+        f"- Plan exactly {num_meals} meals total across the week. Spread them sensibly across days and meal types, leaving the rest as null. This accounts for leftovers — a meal planned one day will be eaten again the next, so fewer unique meals are needed."
+        if num_meals is not None
+        else "- You don't need to assign all 3 meals every day; some can be null."
+    )
 
     prompt = f"""Generate a 7-day meal plan for the week of {week_of}.
 
@@ -38,7 +45,7 @@ Instructions:
 - Favor recipes that use pantry-available ingredients
 - Consider recipe ratings (higher rated = better)
 - Take user notes and preferences into account
-- You don't need to assign all 3 meals every day; some can be "null"
+{meals_instruction}
 
 Return ONLY valid JSON with this structure:
 {{
